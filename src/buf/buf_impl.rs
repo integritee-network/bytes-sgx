@@ -1036,7 +1036,7 @@ impl Buf for &[u8] {
 }
 
 #[cfg(feature = "std")]
-impl<T: AsRef<[u8]>> Buf for std::io::Cursor<T> {
+impl<T: AsRef<[u8]>> Buf for sgx_tstd::io::Cursor<T> {
     fn remaining(&self) -> usize {
         let len = self.get_ref().as_ref().len();
         let pos = self.position();

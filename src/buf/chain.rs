@@ -1,12 +1,8 @@
-use crate::{Buf, BufMut};
-use crate::buf::IntoIter;
-
-use core::mem::MaybeUninit;
+use crate::buf::{IntoIter, UninitSlice};
+use crate::{Buf, BufMut, Bytes};
 
 #[cfg(feature = "std")]
-use std::io::{IoSlice};
-#[cfg(feature = "std")]
-use crate::buf::IoSliceMut;
+use std::io::IoSlice;
 
 /// A `Chain` sequences two buffers.
 ///
@@ -20,12 +16,12 @@ use crate::buf::IoSliceMut;
 /// # Examples
 ///
 /// ```
-/// use bytes::{Bytes, Buf, buf::BufExt};
+/// use bytes::{Bytes, Buf};
 ///
 /// let mut buf = (&b"hello "[..])
 ///     .chain(&b"world"[..]);
 ///
-/// let full: Bytes = buf.to_bytes();
+/// let full: Bytes = buf.copy_to_bytes(11);
 /// assert_eq!(full[..], b"hello world"[..]);
 /// ```
 ///
@@ -40,11 +36,8 @@ pub struct Chain<T, U> {
 
 impl<T, U> Chain<T, U> {
     /// Creates a new `Chain` sequencing the provided values.
-    pub fn new(a: T, b: U) -> Chain<T, U> {
-        Chain {
-            a,
-            b,
-        }
+    pub(crate) fn new(a: T, b: U) -> Chain<T, U> {
+        Chain { a, b }
     }
 
     /// Gets a reference to the first underlying `Buf`.
@@ -52,7 +45,7 @@ impl<T, U> Chain<T, U> {
     /// # Examples
     ///
     /// ```
-    /// use bytes::buf::BufExt;
+    /// use bytes::Buf;
     ///
     /// let buf = (&b"hello"[..])
     ///     .chain(&b"world"[..]);
@@ -68,14 +61,14 @@ impl<T, U> Chain<T, U> {
     /// # Examples
     ///
     /// ```
-    /// use bytes::{Buf, buf::BufExt};
+    /// use bytes::Buf;
     ///
     /// let mut buf = (&b"hello"[..])
     ///     .chain(&b"world"[..]);
     ///
     /// buf.first_mut().advance(1);
     ///
-    /// let full = buf.to_bytes();
+    /// let full = buf.copy_to_bytes(9);
     /// assert_eq!(full, b"elloworld"[..]);
     /// ```
     pub fn first_mut(&mut self) -> &mut T {
@@ -87,7 +80,7 @@ impl<T, U> Chain<T, U> {
     /// # Examples
     ///
     /// ```
-    /// use bytes::buf::BufExt;
+    /// use bytes::Buf;
     ///
     /// let buf = (&b"hello"[..])
     ///     .chain(&b"world"[..]);
@@ -103,14 +96,14 @@ impl<T, U> Chain<T, U> {
     /// # Examples
     ///
     /// ```
-    /// use bytes::{Buf, buf::BufExt};
+    /// use bytes::Buf;
     ///
     /// let mut buf = (&b"hello "[..])
     ///     .chain(&b"world"[..]);
     ///
     /// buf.last_mut().advance(1);
     ///
-    /// let full = buf.to_bytes();
+    /// let full = buf.copy_to_bytes(10);
     /// assert_eq!(full, b"hello orld"[..]);
     /// ```
     pub fn last_mut(&mut self) -> &mut U {
@@ -122,7 +115,7 @@ impl<T, U> Chain<T, U> {
     /// # Examples
     ///
     /// ```
-    /// use bytes::buf::BufExt;
+    /// use bytes::Buf;
     ///
     /// let chain = (&b"hello"[..])
     ///     .chain(&b"world"[..]);
@@ -137,18 +130,19 @@ impl<T, U> Chain<T, U> {
 }
 
 impl<T, U> Buf for Chain<T, U>
-    where T: Buf,
-          U: Buf,
+where
+    T: Buf,
+    U: Buf,
 {
     fn remaining(&self) -> usize {
-        self.a.remaining() + self.b.remaining()
+        self.a.remaining().checked_add(self.b.remaining()).unwrap()
     }
 
-    fn bytes(&self) -> &[u8] {
+    fn chunk(&self) -> &[u8] {
         if self.a.has_remaining() {
-            self.a.bytes()
+            self.a.chunk()
         } else {
-            self.b.bytes()
+            self.b.chunk()
         }
     }
 
@@ -171,26 +165,48 @@ impl<T, U> Buf for Chain<T, U>
     }
 
     #[cfg(feature = "std")]
-    fn bytes_vectored<'a>(&'a self, dst: &mut [IoSlice<'a>]) -> usize {
-        let mut n = self.a.bytes_vectored(dst);
-        n += self.b.bytes_vectored(&mut dst[n..]);
+    fn chunks_vectored<'a>(&'a self, dst: &mut [IoSlice<'a>]) -> usize {
+        let mut n = self.a.chunks_vectored(dst);
+        n += self.b.chunks_vectored(&mut dst[n..]);
         n
+    }
+
+    fn copy_to_bytes(&mut self, len: usize) -> Bytes {
+        let a_rem = self.a.remaining();
+        if a_rem >= len {
+            self.a.copy_to_bytes(len)
+        } else if a_rem == 0 {
+            self.b.copy_to_bytes(len)
+        } else {
+            assert!(
+                len - a_rem <= self.b.remaining(),
+                "`len` greater than remaining"
+            );
+            let mut ret = crate::BytesMut::with_capacity(len);
+            ret.put(&mut self.a);
+            ret.put((&mut self.b).take(len - a_rem));
+            ret.freeze()
+        }
     }
 }
 
-impl<T, U> BufMut for Chain<T, U>
-    where T: BufMut,
-          U: BufMut,
+unsafe impl<T, U> BufMut for Chain<T, U>
+where
+    T: BufMut,
+    U: BufMut,
 {
     fn remaining_mut(&self) -> usize {
-        self.a.remaining_mut() + self.b.remaining_mut()
+        self.a
+            .remaining_mut()
+            .checked_add(self.b.remaining_mut())
+            .unwrap()
     }
 
-    fn bytes_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+    fn chunk_mut(&mut self) -> &mut UninitSlice {
         if self.a.has_remaining_mut() {
-            self.a.bytes_mut()
+            self.a.chunk_mut()
         } else {
-            self.b.bytes_mut()
+            self.b.chunk_mut()
         }
     }
 
@@ -210,13 +226,6 @@ impl<T, U> BufMut for Chain<T, U>
         }
 
         self.b.advance_mut(cnt);
-    }
-
-    #[cfg(feature = "std")]
-    fn bytes_vectored_mut<'a>(&'a mut self, dst: &mut [IoSliceMut<'a>]) -> usize {
-        let mut n = self.a.bytes_vectored_mut(dst);
-        n += self.b.bytes_vectored_mut(&mut dst[n..]);
-        n
     }
 }
 

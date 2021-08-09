@@ -1,5 +1,8 @@
 #![deny(warnings, missing_docs, missing_debug_implementations, rust_2018_idioms)]
-#![doc(html_root_url = "https://docs.rs/bytes/0.5.4")]
+#![doc(test(
+    no_crate_inject,
+    attr(deny(warnings, rust_2018_idioms), allow(dead_code, unused_variables))
+))]
 #![cfg_attr(all(target_env = "sgx", target_vendor = "mesalock"), feature(rustc_private))]
 #![no_std]
 
@@ -73,7 +76,6 @@
 //! perform a syscall, which has the potential of failing. Operations on `Buf`
 //! and `BufMut` are infallible.
 
-
 extern crate alloc;
 
 #[cfg(all(feature = "mesalock_sgx", target_env = "sgx"))]
@@ -84,17 +86,14 @@ extern crate std;
 extern crate sgx_tstd as std;
 
 pub mod buf;
-pub use crate::buf::{
-    Buf,
-    BufMut,
-};
+pub use crate::buf::{Buf, BufMut};
 
-mod bytes_mut;
 mod bytes;
+mod bytes_mut;
 mod fmt;
 mod loom;
-pub use crate::bytes_mut::BytesMut;
 pub use crate::bytes::Bytes;
+pub use crate::bytes_mut::BytesMut;
 
 // Optional Serde support
 #[cfg(feature = "serde")]

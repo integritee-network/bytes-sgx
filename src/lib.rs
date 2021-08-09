@@ -78,11 +78,11 @@
 
 extern crate alloc;
 
-#[cfg(all(feature = "mesalock_sgx", target_env = "sgx"))]
-extern crate std;
+//#[cfg(all(feature = "mesalock_sgx", target_env = "sgx"))]
+//extern crate std;
 
-#[cfg(all(feature = "mesalock_sgx", not(target_env = "sgx")))]
-#[macro_use]
+//#[cfg(all(feature = "mesalock_sgx", not(target_env = "sgx")))]
+//#[macro_use]
 extern crate sgx_tstd as std;
 
 pub mod buf;

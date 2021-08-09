@@ -1,3 +1,5 @@
+extern crate sgx_tstd as std;
+
 mod debug;
 mod hex;
 

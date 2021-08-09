@@ -16,6 +16,8 @@
 //! [`Buf`]: trait.Buf.html
 //! [`BufMut`]: trait.BufMut.html
 
+extern crate sgx_tstd as std;
+
 mod buf_impl;
 mod buf_mut;
 mod chain;

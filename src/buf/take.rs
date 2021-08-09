@@ -1,4 +1,4 @@
-use crate::Buf;
+use crate::{Buf, Bytes};
 
 use core::cmp;
 
@@ -13,10 +13,7 @@ pub struct Take<T> {
 }
 
 pub fn new<T>(inner: T, limit: usize) -> Take<T> {
-    Take {
-        inner,
-        limit,
-    }
+    Take { inner, limit }
 }
 
 impl<T> Take<T> {
@@ -25,7 +22,7 @@ impl<T> Take<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use bytes::buf::{Buf, BufMut, BufExt};
+    /// use bytes::{Buf, BufMut};
     ///
     /// let mut buf = b"hello world".take(2);
     /// let mut dst = vec![];
@@ -50,9 +47,9 @@ impl<T> Take<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use bytes::{Buf, buf::BufExt};
+    /// use bytes::Buf;
     ///
-    /// let mut buf = b"hello world".take(2);
+    /// let buf = b"hello world".take(2);
     ///
     /// assert_eq!(11, buf.get_ref().remaining());
     /// ```
@@ -67,7 +64,7 @@ impl<T> Take<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use bytes::{Buf, BufMut, buf::BufExt};
+    /// use bytes::{Buf, BufMut};
     ///
     /// let mut buf = b"hello world".take(2);
     /// let mut dst = vec![];
@@ -91,7 +88,7 @@ impl<T> Take<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use bytes::{Buf, buf::BufExt};
+    /// use bytes::Buf;
     ///
     /// let mut buf = b"hello world".take(2);
     ///
@@ -113,7 +110,7 @@ impl<T> Take<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use bytes::{Buf, BufMut, buf::BufExt};
+    /// use bytes::{Buf, BufMut};
     ///
     /// let mut buf = b"hello world".take(2);
     /// let mut dst = vec![];
@@ -137,8 +134,8 @@ impl<T: Buf> Buf for Take<T> {
         cmp::min(self.inner.remaining(), self.limit)
     }
 
-    fn bytes(&self) -> &[u8] {
-        let bytes = self.inner.bytes();
+    fn chunk(&self) -> &[u8] {
+        let bytes = self.inner.chunk();
         &bytes[..cmp::min(bytes.len(), self.limit)]
     }
 
@@ -146,5 +143,13 @@ impl<T: Buf> Buf for Take<T> {
         assert!(cnt <= self.limit);
         self.inner.advance(cnt);
         self.limit -= cnt;
+    }
+
+    fn copy_to_bytes(&mut self, len: usize) -> Bytes {
+        assert!(len <= self.remaining(), "`len` greater than remaining");
+
+        let r = self.inner.copy_to_bytes(len);
+        self.limit -= len;
+        r
     }
 }
